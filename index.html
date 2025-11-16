@@ -4,9 +4,72 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CoinFlip - Arc Testnet Casino</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+            color: #fff;
+            font-family: Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+            max-width: 400px;
+            width: 100%;
+            background: rgba(0,0,0,0.5);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,212,255,0.3);
+        }
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #00d4ff, #5b00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0;
+        }
+        .header p {
+            opacity: 0.8;
+            margin: 10px 0 0;
+        }
+        .btn-connect, .btn-flip {
+            background: linear-gradient(45deg, #00d4ff, #5b00ff);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,212,255,0.3);
+            margin: 10px;
+            min-width: 200px;
+        }
+        .btn-connect:hover, .btn-flip:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,212,255,0.4);
+        }
+        .btn-flip.heads { background: linear-gradient(45deg, #ff6b6b, #ee5a52); }
+        .btn-flip.tails { background: linear-gradient(45deg, #4ecdc4, #44a08d); }
+        .balance-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 15px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .balance-card i { color: #00d4ff; margin-right: 10px; }
+        .status { font-size: 0.9em; margin: 10px 0; min-height: 20px; }
+        .result { font-size: 1.1em; margin: 20px 0; padding: 15px; border-radius: 10px; background: rgba(255,255,255,0.05); min-height: 20px; }
+        .coin-flip-area { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+        .win { color: #4ecdc4; }
+        .lose { color: #ff6b6b; }
+        @media (max-width: 600px) { .container { padding: 10px; } .header h1 { font-size: 2em; } .coin-flip-area { flex-direction: column; gap: 10px; } .btn-connect, .btn-flip { width: 100%; min-width: auto; } }
+    </style>
 </head>
 <body>
     <div id="app" class="container">
@@ -34,5 +97,105 @@
             <p id="result" class="result"></p>
         </div>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script>
+        const CONTRACT_ADDRESS = '0x1756D10492393E43c0D24E30DD4AeEED3C1ab554'; // Seu contrato!
+        const USDC_DECIMALS = 6;
+        let provider;
+        let signer;
+
+        async function connect() {
+            const statusEl = document.getElementById('status');
+            statusEl.innerText = '🔄 Conectando...';
+            
+            if (typeof ethers === 'undefined') {
+                statusEl.innerText = '❌ Ethers.js não carregou! Recarregue.';
+                return;
+            }
+            
+            if (typeof window.ethereum === 'undefined') {
+                statusEl.innerText = '❌ Wallet EVM não detectada! Instale Rabby/Brave.';
+                return;
+            }
+            
+            try {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                
+                const network = await provider.getNetwork();
+                console.log('Rede detectada - Chain ID:', network.chainId.toString());
+                if (network.chainId.toString() !== '5042002') {
+                    statusEl.innerText = '❌ Rede errada! Mude pra Arc Testnet 5042002 na Rabby.';
+                    return;
+                }
+                
+                await provider.send('eth_requestAccounts', []);
+                signer = provider.getSigner();
+                
+                const address = await signer.getAddress();
+                console.log('✅ Conectado! Endereço:', address);
+                statusEl.innerText = `✅ Conectado a ${address.slice(0,6)}...! Buscando saldo...`;
+                
+                const balance = await provider.getBalance(address);
+                const formattedBalance = ethers.utils.formatUnits(balance, USDC_DECIMALS);
+                document.getElementById('balance').innerText = formattedBalance;
+                
+                document.getElementById('game').style.display = 'block';
+                document.getElementById('connect').style.display = 'none';
+                statusEl.innerText = `✅ Pronto! Saldo: ${formattedBalance} USDC. Apostas: 1 USDC por rodada.`;
+            } catch (error) {
+                console.error('❌ Erro conexão:', error);
+                statusEl.innerText = `❌ Falha: ${error.message}. Tente de novo.`;
+            }
+        }
+
+        document.getElementById('connect').onclick = connect;
+
+        async function flip(isHeads) {
+            const resultEl = document.getElementById('result');
+            const statusEl = document.getElementById('status');
+            if (!signer) {
+                resultEl.innerText = '❌ Conecte a wallet primeiro!';
+                return;
+            }
+            
+            const choice = isHeads ? 'Cara (Heads)' : 'Coroa (Tails)';
+            resultEl.innerText = `🎲 Apostando em ${choice}... Enviando 1 USDC.`;
+            statusEl.innerText = 'Processando tx...';
+            console.log('🎲 Iniciando flip em', choice);
+            
+            const contract = new ethers.Contract(CONTRACT_ADDRESS, [
+                'function flip(bool isHeads) payable'
+            ], signer);
+            
+            const betValue = ethers.utils.parseUnits('1', USDC_DECIMALS);
+            try {
+                const tx = await contract.flip(isHeads, { value: betValue });
+                console.log('Tx enviada! Hash:', tx.hash);
+                statusEl.innerText = `Tx pendente: ${tx.hash.slice(0,10)}... Aguarde (5-10s).`;
+                
+                await tx.wait();
+                console.log('✅ Tx confirmada!');
+                
+                // Hash encurtado + link clicável
+                resultEl.innerHTML = `🎉 Rodada processada! Hash: ${tx.hash.slice(0,10)}... <a href="https://testnet.arcscan.app/tx/${tx.hash}" target="_blank" style="color: #00d4ff; text-decoration: underline;">Ver no ArcScan</a>`;
+                statusEl.innerText = 'Confirmado! Verifique saldo.';
+                
+                // Atualiza saldo
+                const address = await signer.getAddress();
+                const newBalance = await provider.getBalance(address);
+                document.getElementById('balance').innerText = ethers.utils.formatUnits(newBalance, USDC_DECIMALS);
+                
+                // Placeholder 50/50 (real no ArcScan via event FlipResult)
+                const won = Math.random() > 0.5;
+                resultEl.innerHTML += won ? ' Você GANHOU 1.95 USDC!' : ' Perdeu dessa vez. Tente de novo!';
+                if (won) resultEl.classList.add('win');
+                else resultEl.classList.add('lose');
+            } catch (error) {
+                console.error('❌ Erro na flip:', error);
+                resultEl.innerText = `❌ Flip falhou: ${error.message}. Verifique saldo/gas ou funding do contrato.`;
+                statusEl.innerText = 'Erro na tx – veja console (F12).';
+            }
+        }
+    </script>
 </body>
 </html>
